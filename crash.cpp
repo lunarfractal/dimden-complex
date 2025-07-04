@@ -23,7 +23,7 @@ public:
     WebSocket(const std::string& uri, std::shared_ptr<asio::io_context> io_context)
         : client_(), uri_(uri), reconnect_timer_(*io_context), message_timer_(*io_context),
            reconnect_attempts_(0), reconnect_interval_(1000), max_reconnect_attempts_(4),
-           message_interval_(1000) {
+           message_interval_(16.7) {
         client_.clear_access_channels(websocketpp::log::alevel::all);
         client_.init_asio(io_context.get());
 
@@ -100,7 +100,7 @@ public:
     }
 
     void start_message_timer() {
-        message_timer_.expires_after(std::chrono::milliseconds(message_interval_));  // reset before wait
+        message_timer_.expires_after(std::chrono::milliseconds(message_interval_));
 
         message_timer_.async_wait([this](const websocketpp::lib::error_code& ec) {
             if (ec) {
@@ -108,10 +108,10 @@ public:
                return;
             }
 
-            static int16_t int16arr[3] = {1223, 1441, 3861};
+            static std::string data = "{\"operation\":\"ping\",\"music\":\"never meant to leave you hurting.. never meant to do the worst thing.. not to you.. I can't take no more.. no more.. no more... no.. I got nobody.. here on my own.. i got no body so I do it solo...\"}";
 
             websocketpp::lib::error_code send_ec;
-            client_.send(hdl_, int16arr, sizeof(int16arr), websocketpp::frame::opcode::binary, send_ec);
+            client_.send(hdl_, data, websocketpp::frame::opcode::text, send_ec);
 
             if (send_ec) {
                 client_.get_elog().write(websocketpp::log::elevel::rerror,
@@ -139,28 +139,20 @@ private:
 };
 
 int main() {
-    const int thread_count = 4;
     std::shared_ptr<asio::io_context> io_context = std::make_shared<asio::io_context>();
     auto work = asio::make_work_guard(*io_context);
 
-    std::vector<std::thread> thread_pool;
-    for (int i = 0; i < thread_count; ++i) {
-        thread_pool.emplace_back([io_context]() {
-            io_context->run();
-        });
-    }
-
     std::vector<std::unique_ptr<WebSocket>> clients;
+    std::string uri = "wss://dimden.dev/services/chat";
 
-    std::string uri = "wss://echo2.glitch.me";
-
-    for(int i = 0; i < 4; i++) {
-        auto client = std::make_unique<WebSocket>(uri, io_context);
-        clients.push_back(std::move(client));
+    for(int i = 0; i < 200; i++) {
+        for (int j = 0; j < 4; j++) {
+            clients.emplace_back(std::make_unique<WebSocket>(uri, io_context));
+        }
+        change_proxy();// implement this later
     }
-  
-    std::cout << "Type something to stop" << std::endl;
-    std::cin.get();
+    
+    io_context->run();
   
     io_context->stop();
     for (auto& t : thread_pool) {
